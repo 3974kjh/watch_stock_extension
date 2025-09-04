@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Icon Files</title>
+</head>
+<body>
+    <h1>Stock Monitor Icons Generator</h1>
+    <p>Click the button to download all icon files:</p>
+    <button onclick="generateAllIcons()">Generate & Download Icons</button>
+    
+    <div id="canvases"></div>
+
+    <script>
+        function createIcon(size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // 그라디언트 배경
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            
+            // 배경 원
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, size, size, size * 0.15);
+            ctx.fill();
+            
+            // 차트 라인
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = Math.max(2, size * 0.05);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            const points = [
+                [size * 0.15, size * 0.8],
+                [size * 0.35, size * 0.6],
+                [size * 0.55, size * 0.65],
+                [size * 0.75, size * 0.4],
+                [size * 0.85, size * 0.25]
+            ];
+            
+            ctx.beginPath();
+            ctx.moveTo(points[0][0], points[0][1]);
+            for (let i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i][0], points[i][1]);
+            }
+            ctx.stroke();
+            
+            // 포인트들
+            ctx.fillStyle = 'white';
+            points.forEach(point => {
+                ctx.beginPath();
+                ctx.arc(point[0], point[1], Math.max(1, size * 0.03), 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // 화살표 (상승)
+            if (size >= 32) {
+                const arrowX = size * 0.85;
+                const arrowY = size * 0.25;
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = Math.max(2, size * 0.04);
+                ctx.beginPath();
+                ctx.moveTo(arrowX - size * 0.05, arrowY + size * 0.05);
+                ctx.lineTo(arrowX, arrowY);
+                ctx.lineTo(arrowX + size * 0.05, arrowY + size * 0.05);
+                ctx.stroke();
+            }
+            
+            // 텍스트 (큰 사이즈만)
+            if (size >= 48) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.font = `bold ${size * 0.15}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('₩', size * 0.2, size * 0.3);
+            }
+            
+            return canvas;
+        }
+        
+        function downloadCanvas(canvas, filename) {
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        function generateAllIcons() {
+            const sizes = [16, 32, 48, 128];
+            const container = document.getElementById('canvases');
+            container.innerHTML = '';
+            
+            sizes.forEach(size => {
+                const canvas = createIcon(size);
+                container.appendChild(canvas);
+                
+                // 자동 다운로드
+                setTimeout(() => {
+                    downloadCanvas(canvas, `icon${size}.png`);
+                }, size); // 각각 약간의 딜레이
+                
+                // 라벨 추가
+                const label = document.createElement('p');
+                label.textContent = `Icon ${size}x${size}`;
+                container.appendChild(label);
+            });
+            
+            alert('All icons will be downloaded. Save them to the icons/ folder.');
+        }
+    </script>
+</body>
+</html>

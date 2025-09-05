@@ -688,3 +688,62 @@
     font-size: 12px !important;
   }
 }
+
+/* 수동 모드 좌우 네비게이션 버튼 */
+.manual-nav-btn {
+  position: absolute !important;
+  top: 50% !important;
+  width: 40px !important;
+  height: 60px !important;
+  background: rgba(50, 50, 50, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  color: white !important;
+  font-size: 24px !important;
+  font-weight: bold !important;
+  cursor: pointer !important;
+  z-index: 10001 !important;
+  transform: translateY(-50%) !important;
+  transition: all 0.3s ease !important;
+  border-radius: 0 8px 8px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0.3 !important;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(2px) !important;
+}
+
+.manual-nav-left {
+  left: -5px !important;
+  border-radius: 0 8px 8px 0 !important;
+}
+
+.manual-nav-right {
+  right: -5px !important;
+  border-radius: 8px 0 0 8px !important;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.manual-nav-btn:hover {
+  background: rgba(70, 70, 70, 1) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1 !important;
+  transform: translateY(-50%) scale(1.05) !important;
+}
+
+.manual-nav-left:hover {
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.7) !important;
+}
+
+.manual-nav-right:hover {
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.7) !important;
+}
+
+.manual-nav-btn:active {
+  transform: translateY(-50%) scale(0.95) !important;
+}
+
+/* 수동 모드가 아닐 때 버튼 숨김 */
+.stock-display-container:not(.manual-mode) .manual-nav-btn {
+  display: none !important;
+}

@@ -7,7 +7,8 @@ let currentSettings = {
   position: 'top-left',
   showVolume: true,
   showChange: true,
-  displayVisible: true
+  displayVisible: true,
+  slideMode: 'auto' // 'auto' 또는 'manual'
 };
 
 // DOM 요소들
@@ -21,6 +22,12 @@ const positionButtons = document.querySelectorAll('.position-btn');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const toggleDisplayBtn = document.getElementById('toggleDisplayBtn');
 const statusDiv = document.getElementById('status');
+
+// 모드 토글 관련 요소들
+const modeToggleBtn = document.getElementById('modeToggleBtn');
+const modeIndicator = document.getElementById('modeIndicator');
+const modeDescription = document.getElementById('modeDescription');
+const slideSettingItem = document.getElementById('slideSettingItem');
 
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
@@ -86,13 +93,16 @@ function setupEventListeners() {
       slideIntervalInput.value = currentSettings.slideInterval; // 원래 값으로 복원
     }
   });
+
+  // 모드 토글 이벤트 리스너
+  modeToggleBtn.addEventListener('click', toggleSlideMode);
 }
 
 // 설정 로드
 async function loadSettings() {
   try {
     const data = await chrome.storage.local.get([
-      'stocks', 'updateInterval', 'slideInterval', 'position', 'showVolume', 'showChange', 'displayVisible'
+      'stocks', 'updateInterval', 'slideInterval', 'position', 'showVolume', 'showChange', 'displayVisible', 'slideMode'
     ]);
     
     currentSettings = {
@@ -104,7 +114,8 @@ async function loadSettings() {
       position: data.position || 'top-left',
       showVolume: data.showVolume !== false,
       showChange: data.showChange !== false,
-      displayVisible: data.displayVisible !== false
+      displayVisible: data.displayVisible !== false,
+      slideMode: data.slideMode || 'auto' // 기본값 자동 모드
     };
     
     // UI 업데이트
@@ -121,6 +132,12 @@ async function loadSettings() {
     
     // 표시/숨김 버튼 텍스트 업데이트
     updateToggleButtonText();
+    
+    // 모드 UI 업데이트
+    updateModeUI();
+    
+    // 최근 조회 데이터 로드
+    await loadRecentStocks();
     
   } catch (error) {
     console.error('설정 로드 실패:', error);
@@ -260,6 +277,9 @@ async function addStock() {
     
     showStatus(`${name}이(가) 추가되었습니다.`, 'success');
     
+    // 최근 조회에 추가
+    await addToRecentStocks(code, name);
+    
     // 다음 입력을 위해 코드 필드에 포커스
     stockCodeInput.focus();
     
@@ -368,6 +388,9 @@ async function saveSettings() {
         
         // 🔄 브라우저의 content script에 즉시 알림 (기존 데이터로 즉시 업데이트)
         await notifyContentScriptUpdate();
+        
+        // 📱 모드 변경 알림 (저장 버튼 클릭 시에만 적용)
+        await notifyContentScriptModeChange(currentSettings.slideMode);
         
         // content script에 위치 업데이트 전송 (기존 코드 유지)
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
@@ -530,53 +553,180 @@ stockCodeInput.addEventListener('input', () => {
   }
 });
 
-// 인기 주식 미리 설정된 버튼들
-const popularStocks = [
-  { code: '005930', name: '삼성전자' },
-  { code: '000660', name: 'SK하이닉스' },
-  { code: '035420', name: 'NAVER' },
-  { code: '005380', name: '현대차' },
-  { code: '006400', name: '삼성SDI' },
-  { code: '051910', name: 'LG화학' },
-  { code: '028260', name: '삼성물산' },
-  { code: '105560', name: 'KB금융' }
-];
+// 최근 조회 주식 관리
+let recentStocks = [];
 
-// 인기 주식 추천 UI 추가
-function addPopularStocksSection() {
-  const popularSection = document.createElement('div');
-  popularSection.style.cssText = 'margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.2);';
+// 최근 조회 주식 UI 추가
+function addRecentStocksSection() {
+  const recentSection = document.createElement('div');
+  recentSection.id = 'recentStocksSection';
+  recentSection.style.cssText = 'margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.2);';
   
   // 제목
   const title = document.createElement('div');
   title.style.cssText = 'font-size: 12px; margin-bottom: 8px; opacity: 0.8;';
-  title.textContent = '인기 종목 빠른 추가';
+  title.textContent = '최근 조회';
   
-  // 버튼 컨테이너
+  // 버튼 컨테이너 (스크롤 가능)
   const buttonContainer = document.createElement('div');
-  buttonContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
+  buttonContainer.id = 'recentStocksContainer';
+  buttonContainer.style.cssText = `
+    display: flex; 
+    flex-wrap: wrap; 
+    gap: 6px; 
+    max-height: 80px; 
+    overflow-y: auto; 
+    padding: 2px;
+  `;
   
-  // 각 주식 버튼 생성
-  popularStocks.forEach(stock => {
-    const button = document.createElement('button');
-    button.className = 'btn';
-    button.style.cssText = 'padding: 4px 8px; font-size: 10px; background: rgba(255, 255, 255, 0.2);';
-    button.textContent = stock.name;
-    
-    // 이벤트 리스너 추가
-    button.addEventListener('click', () => quickAddStock(stock.code, stock.name));
-    
-    buttonContainer.appendChild(button);
-  });
+  recentSection.appendChild(title);
+  recentSection.appendChild(buttonContainer);
   
-  popularSection.appendChild(title);
-  popularSection.appendChild(buttonContainer);
+  document.querySelector('.section-content').appendChild(recentSection);
   
-  document.querySelector('.section-content').appendChild(popularSection);
+  // 초기 데이터 로드
+  loadRecentStocks();
+  renderRecentStocks();
 }
 
-// 인기 주식 빠른 추가
+// localStorage에서 최근 조회 데이터 로드
+async function loadRecentStocks() {
+  try {
+    const data = await chrome.storage.local.get(['recentStocks']);
+    recentStocks = data.recentStocks || [];
+  } catch (error) {
+    console.error('❌ 최근 조회 데이터 로드 실패:', error);
+    recentStocks = [];
+  }
+}
+
+// 최근 조회 데이터를 localStorage에 저장
+async function saveRecentStocks() {
+  try {
+    await chrome.storage.local.set({ recentStocks });
+    console.log('✅ 최근 조회 데이터 저장 완료:', recentStocks);
+  } catch (error) {
+    console.error('❌ 최근 조회 데이터 저장 실패:', error);
+  }
+}
+
+// 최근 조회에 주식 추가 (중복 제거 후 첫 번째에 추가)
+async function addToRecentStocks(code, name) {
+  if (!code || !name) return;
+  
+  // 중복 항목 제거
+  recentStocks = recentStocks.filter(stock => stock.code !== code);
+  
+  // 첫 번째에 추가
+  recentStocks.unshift({ code, name });
+  
+  // 최대 10개까지만 유지
+  if (recentStocks.length > 10) {
+    recentStocks = recentStocks.slice(0, 10);
+  }
+  
+  await saveRecentStocks();
+  renderRecentStocks();
+}
+
+// 최근 조회에서 주식 제거
+async function removeFromRecentStocks(code) {
+  recentStocks = recentStocks.filter(stock => stock.code !== code);
+  await saveRecentStocks();
+  renderRecentStocks();
+}
+
+// 최근 조회 목록 렌더링
+function renderRecentStocks() {
+  const container = document.getElementById('recentStocksContainer');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (recentStocks.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'font-size: 11px; opacity: 0.6; padding: 8px;';
+    emptyMsg.textContent = '최근 조회한 종목이 없습니다';
+    container.appendChild(emptyMsg);
+    return;
+  }
+  
+  recentStocks.forEach(stock => {
+    const stockItem = document.createElement('div');
+    stockItem.className = 'recent-stock-item';
+    stockItem.style.cssText = `
+      position: relative; 
+      padding: 4px 8px; 
+      font-size: 10px; 
+      background: rgba(255, 255, 255, 0.2); 
+      border-radius: 4px; 
+      cursor: pointer; 
+      transition: all 0.2s ease;
+      margin: 2px;
+    `;
+    stockItem.textContent = stock.name;
+    
+    // 삭제 버튼 생성
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'recent-stock-delete';
+    deleteBtn.innerHTML = '×';
+    deleteBtn.style.cssText = `
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(255, 0, 0, 0.8);
+      color: white;
+      border: none;
+      font-size: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      display: none;
+      z-index: 100;
+      line-height: 1;
+    `;
+    
+    // 마우스 이벤트
+    stockItem.addEventListener('mouseenter', () => {
+      stockItem.style.background = 'rgba(255, 255, 255, 0.3)';
+      deleteBtn.style.display = 'block';
+    });
+    
+    stockItem.addEventListener('mouseleave', () => {
+      stockItem.style.background = 'rgba(255, 255, 255, 0.2)';
+      deleteBtn.style.display = 'none';
+    });
+    
+    // 클릭 이벤트 (빠른 추가)
+    stockItem.addEventListener('click', (e) => {
+      if (e.target === deleteBtn) return; // 삭제 버튼 클릭 시 제외
+      quickAddStock(stock.code, stock.name);
+    });
+    
+    // 삭제 버튼 클릭 이벤트
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeFromRecentStocks(stock.code);
+    });
+    
+    stockItem.appendChild(deleteBtn);
+    container.appendChild(stockItem);
+  });
+}
+
+// 최근 조회에서 빠른 추가
 function quickAddStock(code, name) {
+  // 이미 모니터링 주식에 포함되어 있는지 확인
+  const isDuplicate = currentSettings.stocks.some(stock => stock.code === code);
+  
+  if (isDuplicate) {
+    console.log('⚠️ 이미 모니터링 중인 종목:', name, '(' + code + ')');
+    showStatus(`${name}은(는) 이미 모니터링 중입니다.`, 'error');
+    return;
+  }
+  
   stockCodeInput.value = code;
   stockNameInput.value = name;
   addStock();
@@ -613,11 +763,78 @@ async function notifyContentScriptSlideIntervalUpdate(newInterval) {
   }
 }
 
+// 모드 토글 함수 (UI만 업데이트, 실제 적용은 저장 시)
+function toggleSlideMode() {
+  try {
+    const newMode = currentSettings.slideMode === 'auto' ? 'manual' : 'auto';
+    currentSettings.slideMode = newMode;
+    
+    // UI만 업데이트 (localStorage 저장은 하지 않음)
+    updateModeUI();
+    
+    const modeText = newMode === 'auto' ? '자동' : '수동';
+    console.log(`🔄 슬라이드 모드 UI 변경: ${modeText} (저장 대기 중)`);
+    
+  } catch (error) {
+    console.error('❌ 모드 UI 변경 실패:', error);
+  }
+}
+
+// 모드 UI 업데이트
+function updateModeUI() {
+  const isAuto = currentSettings.slideMode === 'auto';
+  
+  // 토글 버튼 상태 업데이트
+  modeToggleBtn.className = `mode-toggle-btn ${isAuto ? 'auto' : 'manual'}`;
+  modeDescription.textContent = isAuto ? '자동' : '수동';
+  
+  // 자동 슬라이드 설정 활성화/비활성화
+  if (slideSettingItem) {
+    if (isAuto) {
+      slideSettingItem.classList.remove('disabled');
+      slideIntervalInput.disabled = false;
+    } else {
+      slideSettingItem.classList.add('disabled');
+      slideIntervalInput.disabled = true;
+    }
+  }
+}
+
+// content script에 모드 변경 알림
+async function notifyContentScriptModeChange(mode) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    let notifiedTabs = 0;
+    
+    for (const tab of tabs) {
+      if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('moz-extension://')) {
+        try {
+          await chrome.tabs.sendMessage(tab.id, {
+            action: 'modeChange',
+            mode: mode
+          });
+          notifiedTabs++;
+        } catch (error) {
+          // content script가 없는 탭은 무시
+        }
+      }
+    }
+    
+    if (notifiedTabs > 0) {
+      console.log(`✅ 총 ${notifiedTabs}개 탭에 모드 변경 알림 완료`);
+    } else {
+      console.log('ℹ️ 모드 변경을 알릴 content script가 있는 탭이 없음');
+    }
+  } catch (error) {
+    console.error('❌ 모드 변경 알림 전송 실패:', error);
+  }
+}
+
 // 전역 함수 등록 제거 (더 이상 불필요)
 
-// 페이지 로드 완료 후 인기 주식 섹션 추가
+// 페이지 로드 완료 후 최근 조회 섹션 추가
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
-    addPopularStocksSection();
+    addRecentStocksSection();
   }, 100);
 });

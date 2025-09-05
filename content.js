@@ -8,6 +8,7 @@ let currentStockIndex = 0;
 let stockDataArray = [];
 let autoSlideInterval = null;
 let isSliding = false;
+let slideMode = 'auto'; // 'auto' 또는 'manual'
 
 // 로딩 상태 관리 변수들
 let isLoadingData = false;
@@ -389,39 +390,10 @@ async function updateStockDisplay(stockData) {
     stockCard.dataset.stockCode = currentStock.code;
     stockCard.style.borderLeft = `3px solid ${changeColor}`;
     
-    // 🖱️ 카드 클릭 이벤트 추가 (2개 이상 종목일 때만)
+    // 🖱️ 카드 클릭 이벤트 비활성화 (수동/자동 모드 모두 클릭 없음)
     if (hasMultipleStocks) {
-      stockCard.style.cursor = 'pointer';
-      
-      // 중복 실행 방지를 위한 debounce 플래그
-      let isCardClickProcessing = false;
-      
-      stockCard.addEventListener('click', (e) => {
-        // 네이버 버튼 클릭은 제외 (이미 stopPropagation 적용됨)
-        if (!e.target.closest('.stock-naver-btn-fixed')) {
-          // 중복 클릭 방지
-          if (isCardClickProcessing) {
-            console.log('⚠️ 카드 클릭 처리 중 - 중복 클릭 무시');
-            return;
-          }
-          
-          isCardClickProcessing = true;
-          console.log('🖱️ 카드 클릭 - 수동 슬라이드 시작 (직접 DOM)');
-          
-          manualNextSlide().then(() => {
-            // 처리 완료 후 플래그 해제 (1초 후)
-            setTimeout(() => {
-              isCardClickProcessing = false;
-            }, 1000);
-          }).catch((error) => {
-            console.error('❌ 수동 슬라이드 실행 실패:', error);
-            setTimeout(() => {
-              isCardClickProcessing = false;
-            }, 1000);
-          });
-        }
-      });
-      console.log('✅ 카드 클릭 이벤트 리스너 추가됨 (직접 DOM)');
+      stockCard.style.cursor = 'default'; // 클릭 가능한 커서 제거
+      console.log('❌ 카드 클릭 이벤트 비활성화됨 (직접 DOM)');
     }
     
     // 카드 헤더 생성
@@ -770,6 +742,59 @@ async function updateStockDisplay(stockData) {
   await executeSlideManagementLogic();
 }
 
+// 📱 수동 모드 좌우 버튼 생성 및 관리
+function createManualNavigationButtons() {
+  if (!stockDisplayContainer) return;
+  
+  // 기존 수동 버튼 제거
+  removeManualNavigationButtons();
+  
+  if (slideMode !== 'manual' || stockDataArray.length <= 1) {
+    return; // 수동 모드가 아니거나 카드가 1개 이하면 버튼 생성 안함
+  }
+  
+  // 좌측 버튼 생성
+  const leftBtn = document.createElement('button');
+  leftBtn.className = 'manual-nav-btn manual-nav-left';
+  leftBtn.innerHTML = '‹';
+  leftBtn.title = '이전 카드';
+  leftBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('📱 수동 모드 - 이전 버튼 클릭');
+    prevSlide();
+  });
+  
+  // 우측 버튼 생성
+  const rightBtn = document.createElement('button');
+  rightBtn.className = 'manual-nav-btn manual-nav-right';
+  rightBtn.innerHTML = '›';
+  rightBtn.title = '다음 카드';
+  rightBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('📱 수동 모드 - 다음 버튼 클릭');
+    nextSlide();
+  });
+  
+  // DOM에 추가
+  stockDisplayContainer.appendChild(leftBtn);
+  stockDisplayContainer.appendChild(rightBtn);
+  
+  console.log('📱 수동 모드 좌우 버튼 생성 완료');
+}
+
+// 📱 수동 모드 좌우 버튼 제거
+function removeManualNavigationButtons() {
+  if (!stockDisplayContainer) return;
+  
+  const leftBtn = stockDisplayContainer.querySelector('.manual-nav-left');
+  const rightBtn = stockDisplayContainer.querySelector('.manual-nav-right');
+  
+  if (leftBtn) leftBtn.remove();
+  if (rightBtn) rightBtn.remove();
+}
+
 // 표시/숨김 토글 기능 (슬라이드 방식 대응)
 function toggleDisplay(e) {
   if (e) {
@@ -847,6 +872,13 @@ async function manageAutoSlide(hasMultipleStocks) {
   // 🔒 중복 초기화 방지
   if (isAutoSlideInitializing) {
     console.warn('⚠️ 자동 슬라이드 이미 초기화 중 - 요청 무시');
+    return;
+  }
+  
+  // 📱 수동 모드에서는 자동 슬라이드 비활성화
+  if (slideMode === 'manual') {
+    console.log('📱 수동 모드 - 자동 슬라이드 비활성화');
+    clearAllSlideIntervals(); // 기존 타이머만 정리
     return;
   }
   
@@ -954,17 +986,8 @@ async function manualNextSlide() {
     새종목: stockDataArray[currentStockIndex]?.name
   });
   
-  // 🔄 자동 슬라이드 타이머 재시작 (슬라이딩 완료 후 지연 실행)
-  if (stockDataArray.length >= 2) {
-    console.log('🔄 자동 슬라이드 타이머 재시작 예약 (수동 전환 후)');
-    // 애니메이션 완료 후 타이머 재시작 (중복 실행 방지)
-    setTimeout(async () => {
-      if (!isSliding) {
-        console.log('🔄 자동 슬라이드 타이머 재시작 실행');
-        await manageAutoSlide(true);
-      }
-    }, 500); // 애니메이션 완료 후 충분한 시간 대기
-  }
+  // ❌ 자동 슬라이드 재시작 없음 (수동 모드에서는 수동 제어만)
+  console.log('✅ 수동 전환 완료 - 자동 슬라이드 재시작 없음');
 }
 
 // 이전 슬라이드
@@ -1426,6 +1449,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleSlideIntervalUpdate(message.slideInterval);
       sendResponse({success: true});
       break;
+      
+    case 'modeChange':
+      // 📱 popup.js에서 모드가 변경됨 - 수동/자동 모드 전환
+      handleModeChange(message.mode);
+      sendResponse({success: true});
+      break;
   }
   return true; // 비동기 응답을 위해
 });
@@ -1464,6 +1493,61 @@ async function handleSlideIntervalUpdate(newInterval) {
   }
 }
 
+// 📱 모드 변경 처리 함수
+async function handleModeChange(newMode) {
+  console.log('📱 모드 변경 요청:', slideMode, '→', newMode);
+  
+  try {
+    const oldMode = slideMode;
+    slideMode = newMode;
+    
+    // 컨테이너에 모드 클래스 추가/제거
+    if (stockDisplayContainer) {
+      if (newMode === 'manual') {
+        stockDisplayContainer.classList.add('manual-mode');
+        stockDisplayContainer.classList.remove('auto-mode');
+      } else {
+        stockDisplayContainer.classList.add('auto-mode');
+        stockDisplayContainer.classList.remove('manual-mode');
+      }
+    }
+    
+    if (newMode === 'manual') {
+      // 수동 모드로 전환
+      console.log('📱 수동 모드로 전환');
+      
+      // 1. 모든 자동 슬라이드 interval 제거
+      clearAllSlideIntervals();
+      
+      // 2. 카드 클릭 이벤트 비활성화 (이미 attachEventListeners에서 처리)
+      
+      // 3. 수동 좌우 버튼 생성 (2개 이상 카드 시)
+      if (stockDataArray.length > 1) {
+        createManualNavigationButtons();
+      }
+      
+    } else {
+      // 자동 모드로 전환
+      console.log('🔄 자동 모드로 전환');
+      
+      // 1. 수동 좌우 버튼 제거
+      removeManualNavigationButtons();
+      
+      // 2. 카드 클릭 이벤트 비활성화 (자동 모드에서도 클릭 없음)
+      
+      // 3. 자동 슬라이드 시작 (2개 이상 카드 시)
+      if (stockDataArray.length > 1) {
+        await manageAutoSlide(true);
+      }
+    }
+    
+    console.log(`✅ 모드 변경 완료: ${oldMode} → ${newMode}`);
+    
+  } catch (error) {
+    console.error('❌ 모드 변경 처리 실패:', error);
+  }
+}
+
 // 🖱️ 카드 클릭 핸들러 변수 (중복 방지용)
 let cardClickHandler = null;
 // 🖱️ 중복 클릭 방지 플래그 (innerHTML 방식용)
@@ -1480,43 +1564,15 @@ function attachEventListeners() {
       cardClickHandler = null;
     }
     
-    // 🖱️ 이벤트 위임 방식으로 카드 클릭 이벤트 추가 (2개 이상 종목일 때만)
+    // 🖱️ 카드 클릭 이벤트 비활성화 (수동/자동 모드 모두 클릭 없음)
     if (stockDataArray.length > 1) {
-      cardClickHandler = (e) => {
-        const stockCard = e.target.closest('.stock-card');
-        if (stockCard && !e.target.closest('.stock-naver-btn-fixed')) {
-          // 중복 클릭 방지
-          if (isHTMLCardClickProcessing) {
-            console.log('⚠️ 카드 클릭 처리 중 - 중복 클릭 무시 (innerHTML 방식)');
-            return;
-          }
-          
-          isHTMLCardClickProcessing = true;
-          console.log('🖱️ 카드 클릭 - 수동 슬라이드 시작 (innerHTML 방식)');
-          
-          manualNextSlide().then(() => {
-            // 처리 완료 후 플래그 해제 (1초 후)
-            setTimeout(() => {
-              isHTMLCardClickProcessing = false;
-            }, 1000);
-          }).catch((error) => {
-            console.error('❌ 수동 슬라이드 실행 실패:', error);
-            setTimeout(() => {
-              isHTMLCardClickProcessing = false;
-            }, 1000);
-          });
-        }
-      };
-      
-      stockDisplayContainer.addEventListener('click', cardClickHandler);
-      
-      // 카드 스타일 설정
+      // 카드 스타일 설정 - 클릭 불가능한 상태로 설정
       const stockCards = stockDisplayContainer.querySelectorAll('.stock-card');
       stockCards.forEach(card => {
-        card.style.cursor = 'pointer';
+        card.style.cursor = 'default'; // 클릭 가능한 커서 제거
       });
       
-      console.log('✅ 카드 클릭 이벤트 리스너 추가됨 (이벤트 위임 방식)');
+      console.log('❌ 카드 클릭 이벤트 비활성화됨 (innerHTML 방식)');
     }
     
     // 네비게이션 버튼 이벤트 추가
@@ -1526,25 +1582,22 @@ function attachEventListeners() {
 
     if (prevBtn) {
       prevBtn.addEventListener('click', () => {
+        console.log('⬅️ 이전 버튼 클릭 (자동 슬라이드 재시작 없음)');
         prevSlide();
-        // 수동 전환 시 타이머 재시작
-        manageAutoSlide(stockDataArray.length > 1).catch(console.error);
       });
     }
     
     if (nextBtn) {
       nextBtn.addEventListener('click', () => {
+        console.log('➡️ 다음 버튼 클릭 (자동 슬라이드 재시작 없음)');
         nextSlide();
-        // 수동 전환 시 타이머 재시작
-        manageAutoSlide(stockDataArray.length > 1).catch(console.error);
       });
     }
     
     indicators.forEach((indicator, index) => {
       indicator.addEventListener('click', () => {
+        console.log(`🎯 인디케이터 ${index} 클릭 (자동 슬라이드 재시작 없음)`);
         goToSlide(index);
-        // 수동 전환 시 타이머 재시작
-        manageAutoSlide(stockDataArray.length > 1).catch(console.error);
       });
     });
 
@@ -1567,15 +1620,25 @@ async function executeSlideManagementLogic() {
     // 이벤트 리스너 추가
     attachEventListeners();
     
-    // 🚀 자동 슬라이드 무조건 관리 (2개 이상 종목 시 강제 시작)
+    // 📱 모드에 따른 처리
     const actualHasMultiple = stockDataArray.length > 1;
-    await manageAutoSlide(actualHasMultiple);
     
-    // 🔄 안전장치: 타이머가 생성되지 않은 경우만 재시도 (중복 방지)
-    if (actualHasMultiple) {  
+    if (slideMode === 'manual') {
+      // 수동 모드: 좌우 버튼 생성, 자동 슬라이드 비활성화
+      console.log('📱 수동 모드 - 좌우 버튼 생성');
+      createManualNavigationButtons();
+    } else {
+      // 자동 모드: 자동 슬라이드 시작, 좌우 버튼 제거
+      console.log('🔄 자동 모드 - 자동 슬라이드 시작');
+      removeManualNavigationButtons();
+      await manageAutoSlide(actualHasMultiple);
+    }
+    
+    // 🔄 안전장치: 자동 모드에서만 타이머 생성 재시도 (중복 방지)
+    if (actualHasMultiple && slideMode === 'auto') {  
       setTimeout(async () => {
-        if (!autoSlideInterval && stockDataArray.length > 1 && !isAutoSlideInitializing) {
-          console.warn('⚠️ 타이머 생성 실패 감지 - 재시도');
+        if (!autoSlideInterval && stockDataArray.length > 1 && !isAutoSlideInitializing && slideMode === 'auto') {
+          console.warn('⚠️ 자동 모드 타이머 생성 실패 감지 - 재시도');
           await manageAutoSlide(true);
         }
       }, 500); // 충분한 시간 후 재확인
@@ -1671,16 +1734,28 @@ function convertArrayToObject(stockArray) {
 async function initializeStockDisplay() {
   createStockDisplay();
   
-  // 저장된 표시 상태 복원
+  // 저장된 표시 상태 및 모드 복원
   try {
-    const data = await chrome.storage.local.get(['displayVisible', 'stocks']);
+    const data = await chrome.storage.local.get(['displayVisible', 'stocks', 'slideMode']);
     
     // displayVisible 상태 설정 (기본값: true)
     isDisplayVisible = data.displayVisible !== false;
     
+    // slideMode 상태 설정 (기본값: auto)
+    slideMode = data.slideMode || 'auto';
+    
     // 컨테이너 표시 상태 적용
     if (stockDisplayContainer) {
       stockDisplayContainer.style.display = isDisplayVisible ? 'block' : 'none';
+      
+      // 모드에 따른 클래스 적용
+      if (slideMode === 'manual') {
+        stockDisplayContainer.classList.add('manual-mode');
+        stockDisplayContainer.classList.remove('auto-mode');
+      } else {
+        stockDisplayContainer.classList.add('auto-mode');
+        stockDisplayContainer.classList.remove('manual-mode');
+      }
       
       // 표시 상태가 아니면 자동 슬라이드 중지
       if (!isDisplayVisible && autoSlideInterval) {

@@ -107,7 +107,7 @@ async function loadSettings() {
     
     currentSettings = {
       stocks: data.stocks || [
-        { code: '005930', name: '삼성전자', enabled: true }
+        { code: '005930', name: '삼성전자', enabled: true, order: 0 }
       ],
       updateInterval: data.updateInterval || 2,
       slideInterval: data.slideInterval || 5, // 기본값 5초
@@ -117,6 +117,16 @@ async function loadSettings() {
       displayVisible: data.displayVisible !== false,
       slideMode: data.slideMode || 'auto' // 기본값 자동 모드
     };
+    
+    // 기존 데이터에 order가 없는 경우 추가
+    currentSettings.stocks.forEach((stock, index) => {
+      if (stock.order === undefined) {
+        stock.order = index;
+      }
+    });
+    
+    // order 순으로 정렬
+    currentSettings.stocks.sort((a, b) => a.order - b.order);
     
     // UI 업데이트
     updateIntervalInput.value = currentSettings.updateInterval;
@@ -145,7 +155,7 @@ async function loadSettings() {
   }
 }
 
-// 주식 목록 렌더링
+// 주식 목록 렌더링 (드래그 & 드롭 지원)
 function renderStockList() {
   // 기존 내용 초기화
   stockList.innerHTML = '';
@@ -161,10 +171,24 @@ function renderStockList() {
     return;
   }
   
+  // order 순으로 정렬
+  const sortedStocks = [...currentSettings.stocks].sort((a, b) => a.order - b.order);
+  
   // 각 주식 아이템을 DOM으로 생성
-  currentSettings.stocks.forEach((stock, index) => {
+  sortedStocks.forEach((stock, index) => {
     const stockItem = document.createElement('div');
     stockItem.className = 'stock-item';
+    stockItem.draggable = false; // 전체 아이템은 드래그 불가
+    stockItem.dataset.stockCode = stock.code;
+    stockItem.dataset.originalOrder = stock.order || 0;
+    stockItem.dataset.stockName = stock.name;
+    
+    // 드래그 핸들 추가
+    const dragHandle = document.createElement('div');
+    dragHandle.className = 'drag-handle';
+    dragHandle.draggable = true; // 핸들만 드래그 가능
+    dragHandle.innerHTML = '⋮⋮';
+    dragHandle.title = '드래그하여 순서 변경';
     
     // 주식 정보 섹션
     const stockInfo = document.createElement('div');
@@ -188,7 +212,10 @@ function renderStockList() {
     // 토글 스위치
     const toggleSwitch = document.createElement('div');
     toggleSwitch.className = `toggle-switch ${stock.enabled ? 'active' : ''}`;
-    toggleSwitch.addEventListener('click', () => toggleStock(index));
+    toggleSwitch.addEventListener('click', () => {
+      const stockIndex = currentSettings.stocks.findIndex(s => s.code === stock.code);
+      toggleStock(stockIndex);
+    });
     
     const toggleSlider = document.createElement('div');
     toggleSlider.className = 'toggle-slider';
@@ -197,19 +224,211 @@ function renderStockList() {
     // 삭제 버튼
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'delete-btn';
-    deleteBtn.textContent = '삭제';
-    deleteBtn.addEventListener('click', () => deleteStock(index));
+    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.title = '주식 삭제';
+    deleteBtn.addEventListener('click', () => {
+      const stockIndex = currentSettings.stocks.findIndex(s => s.code === stock.code);
+      deleteStock(stockIndex);
+    });
     
     stockControls.appendChild(toggleSwitch);
     stockControls.appendChild(deleteBtn);
     
     // 전체 아이템 조립
+    stockItem.appendChild(dragHandle);
     stockItem.appendChild(stockInfo);
     stockItem.appendChild(stockControls);
+    
+    // 드래그 이벤트 리스너 (핸들에만 적용)
+    setupDragAndDrop(dragHandle, stockItem);
     
     // 리스트에 추가
     stockList.appendChild(stockItem);
   });
+  
+  // 컨테이너 레벨 드롭 존 설정 (한 번만 실행)
+  setupContainerDropZone();
+}
+
+// 드래그 & 드롭 기능 설정 (핸들 기반)
+function setupDragAndDrop(dragHandle, stockItem) {
+  let originalOrder = [];
+  
+  // 드래그 핸들에만 이벤트 적용
+  dragHandle.addEventListener('dragstart', (e) => {
+    draggedElement = stockItem; // 실제로는 부모 stockItem을 드래그
+    stockItem.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', stockItem.dataset.stockCode);
+    
+    // 드래그 시작 시 원래 순서 저장
+    originalOrder = Array.from(stockList.querySelectorAll('.stock-item')).map(el => el.dataset.stockCode);
+    console.log('🎯 드래그 시작 - 원래 순서:', originalOrder);
+    console.log('🖱️ 드래그 핸들 클릭됨:', stockItem.dataset.stockCode);
+  });
+  
+  dragHandle.addEventListener('dragend', (e) => {
+    stockItem.classList.remove('dragging');
+    
+    // 모든 시각적 표시 제거
+    stockList.querySelectorAll('.stock-item').forEach(el => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    
+    // 드래그 종료 시 순서 변경 확인
+    const currentOrder = Array.from(stockList.querySelectorAll('.stock-item')).map(el => el.dataset.stockCode);
+    console.log('🎯 드래그 종료 - 현재 순서:', currentOrder);
+    
+    // 순서가 실제로 변경되었는지 확인
+    const orderChanged = !originalOrder.every((code, index) => code === currentOrder[index]);
+    
+    if (orderChanged) {
+      console.log('✅ 순서 변경 감지 - 업데이트 진행');
+      updateStockOrder();
+    } else {
+      console.log('📋 순서 변경 없음 - 업데이트 건너뛰기');
+    }
+    
+    draggedElement = null;
+    originalOrder = [];
+  });
+  
+  // 각 stockItem에 dragover, drop 이벤트 추가
+  setupDropZone(stockItem);
+}
+
+// 드롭 존 설정 (모든 stockItem에 적용)
+function setupDropZone(item) {
+  item.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (!draggedElement || draggedElement === item) return;
+    
+    // 모든 항목에서 drag-over 클래스 제거
+    stockList.querySelectorAll('.stock-item').forEach(el => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    
+    // 드롭 위치에 따라 시각적 표시
+    const rect = item.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+    
+    if (e.clientY < midpoint) {
+      item.classList.add('drag-over-top');
+    } else {
+      item.classList.add('drag-over-bottom');
+    }
+  });
+  
+  item.addEventListener('dragleave', (e) => {
+    // 항목을 완전히 벗어날 때만 클래스 제거
+    const rect = item.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right || 
+        e.clientY < rect.top || e.clientY > rect.bottom) {
+      item.classList.remove('drag-over-top', 'drag-over-bottom');
+    }
+  });
+  
+  item.addEventListener('drop', (e) => {
+    e.preventDefault();
+    
+    if (!draggedElement || draggedElement === item) return;
+    
+    console.log('📍 드롭 실행:', draggedElement.dataset.stockCode, '→', item.dataset.stockCode);
+    
+    // 모든 시각적 표시 제거
+    stockList.querySelectorAll('.stock-item').forEach(el => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    
+    // 드롭 위치 계산
+    const rect = item.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+    
+    if (e.clientY < midpoint) {
+      // 위쪽에 드롭
+      console.log('📍 위쪽에 드롭');
+      stockList.insertBefore(draggedElement, item);
+    } else {
+      // 아래쪽에 드롭
+      console.log('📍 아래쪽에 드롭');
+      stockList.insertBefore(draggedElement, item.nextSibling);
+    }
+  });
+}
+
+// 컨테이너 레벨 드롭 존 설정 (한 번만 실행)
+function setupContainerDropZone() {
+  if (stockList.hasAttribute('data-drop-setup')) return;
+  
+  stockList.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+  
+  stockList.addEventListener('drop', (e) => {
+    e.preventDefault();
+    
+    if (!draggedElement) return;
+    
+    // 빈 공간에 드롭 시 맨 아래로
+    if (e.target === stockList) {
+      console.log('📍 컨테이너 빈 공간에 드롭 - 맨 아래로 이동');
+      stockList.appendChild(draggedElement);
+    }
+  });
+  
+  stockList.setAttribute('data-drop-setup', 'true');
+}
+
+// 주식 순서 업데이트
+async function updateStockOrder() {
+  const stockItems = stockList.querySelectorAll('.stock-item');
+  
+  console.log('🔄 순서 업데이트 시작');
+  console.log('📋 현재 DOM 순서:', Array.from(stockItems).map((item, index) => `${index}: ${item.dataset.stockCode}`));
+  
+  // DOM 순서에 따라 order 재설정
+  stockItems.forEach((item, index) => {
+    const stockCode = item.dataset.stockCode;
+    const stock = currentSettings.stocks.find(s => s.code === stockCode);
+    if (stock) {
+      const oldOrder = stock.order;
+      stock.order = index;
+      console.log(`📊 ${stock.name}(${stockCode}): ${oldOrder} → ${index}`);
+    }
+  });
+  
+  // order 순으로 정렬
+  currentSettings.stocks.sort((a, b) => a.order - b.order);
+  
+  try {
+    // localStorage에 저장
+    await chrome.storage.local.set(currentSettings);
+    console.log('💾 localStorage에 새 순서 저장 완료');
+    
+    // background script에 순서 변경 알림
+    chrome.runtime.sendMessage({
+      action: 'updateSettings',
+      settings: currentSettings,
+      forceRefresh: false // 순서 변경은 기존 데이터 유지
+    }).catch(console.warn);
+    
+    // content script에 순서 변경 알림
+    await notifyContentScriptUpdate();
+    
+    console.log('✅ 주식 순서 업데이트 완료');
+    console.log('📈 최종 순서:', currentSettings.stocks.map(s => `${s.order}: ${s.name}(${s.code})`));
+    showStatus('주식 순서가 변경되었습니다.', 'success');
+    
+    // UI 다시 렌더링하여 dataset.originalOrder 업데이트
+    renderStockList();
+    
+  } catch (error) {
+    console.error('❌ 주식 순서 업데이트 실패:', error);
+    showStatus('순서 변경에 실패했습니다.', 'error');
+  }
 }
 
 // 주식 추가
@@ -244,11 +463,12 @@ async function addStock() {
   }
   
   try {
-    // 새 주식 객체 생성
+    // 새 주식 객체 생성 (order는 배열 끝에 추가)
     const newStock = {
       code: code,
       name: name,
-      enabled: true
+      enabled: true,
+      order: currentSettings.stocks.length
     };
     
     // 주식 추가
@@ -556,6 +776,9 @@ stockCodeInput.addEventListener('input', () => {
 // 최근 조회 주식 관리
 let recentStocks = [];
 
+// 드래그 앤 드롭 전역 변수
+let draggedElement = null;
+
 // 최근 조회 주식 UI 추가
 function addRecentStocksSection() {
   const recentSection = document.createElement('div');
@@ -585,8 +808,9 @@ function addRecentStocksSection() {
   document.querySelector('.section-content').appendChild(recentSection);
   
   // 초기 데이터 로드
-  loadRecentStocks();
-  renderRecentStocks();
+  loadRecentStocks().then(() => {
+    renderRecentStocks();
+  });
 }
 
 // localStorage에서 최근 조회 데이터 로드
@@ -670,22 +894,26 @@ function renderRecentStocks() {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'recent-stock-delete';
     deleteBtn.innerHTML = '×';
+    deleteBtn.title = '항목 삭제';
     deleteBtn.style.cssText = `
       position: absolute;
-      top: -5px;
-      right: -5px;
-      width: 16px;
-      height: 16px;
+      top: -4px;
+      right: -4px;
+      width: 15px;
+      height: 15px;
       border-radius: 50%;
-      background: rgba(255, 0, 0, 0.8);
+      background: rgba(220, 20, 20, 0.9);
       color: white;
-      border: none;
-      font-size: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      font-size: 12px;
       font-weight: bold;
       cursor: pointer;
       display: none;
       z-index: 100;
-      line-height: 1;
+      line-height: 15px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
     `;
     
     // 마우스 이벤트

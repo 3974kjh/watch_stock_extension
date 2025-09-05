@@ -258,15 +258,20 @@ async function updateStockDisplay(stockData) {
   const validStockData = stockData || {};
   const stockArray = Object.values(validStockData);
   
-  // 유효한 데이터만 필터링 (빈 데이터나 오류 데이터 제거)
-  const filteredStockArray = stockArray.filter(stock => 
-    stock && 
-    stock.code && 
-    stock.price && 
-    stock.price !== '0' &&
-    stock.name &&
-    stock.name.trim() !== ''
-  );
+  // 유효한 데이터만 필터링 및 order 순으로 정렬
+  const filteredStockArray = stockArray
+    .filter(stock => 
+      stock && 
+      stock.code && 
+      stock.price && 
+      stock.price !== '0' &&
+      stock.name &&
+      stock.name.trim() !== ''
+    )
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+  
+  // 정렬 결과 로그 (디버깅용)
+  console.log('🎯 order 순 정렬 결과:', filteredStockArray.map(s => `${s.order || 0}: ${s.name}(${s.code})`));
   
   stockDataArray = filteredStockArray;
   const hasData = stockDataArray.length > 0;
@@ -1666,8 +1671,10 @@ async function handleSettingsUpdate(newSettings) {
     const latestStocks = storageData.stocks || [];
     const isVisible = storageData.displayVisible !== false; // 기본값: true
     
-    // 3. 활성화된 종목만 필터링 (localStorage 기준)
-    const activeStocks = latestStocks.filter(stock => stock.enabled);
+    // 3. 활성화된 종목만 필터링 및 order 순으로 정렬
+    const activeStocks = latestStocks
+      .filter(stock => stock.enabled)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
     
     // 4. 표시 상태 업데이트
     isDisplayVisible = isVisible;
@@ -1766,7 +1773,9 @@ async function initializeStockDisplay() {
     
     // 🎬 초기 자동 슬라이드 설정 (활성화된 종목이 2개 이상일 때)
     if (data.stocks) {
-      const activeStocks = data.stocks.filter(s => s.enabled);
+      const activeStocks = data.stocks
+        .filter(s => s.enabled)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
       
       if (activeStocks.length > 1) {
         

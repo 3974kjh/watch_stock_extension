@@ -210,16 +210,23 @@ async function updateAllStocks() {
     
     console.log('활성화된 종목 코드:', activeStockCodes);
     
-    // 활성화된 종목의 데이터만 추출
-    activeStockCodes.forEach(code => {
-      if (stockData[code]) {
-        validStockData[code] = stockData[code];
+    // 활성화된 종목의 데이터만 추출 (설정 정보와 합쳐서)
+    currentStocks.forEach(stock => {
+      if (stock.enabled && stockData[stock.code]) {
+        // 크롤링 데이터와 설정 정보 합치기
+        validStockData[stock.code] = {
+          ...stockData[stock.code], // 크롤링한 가격 데이터
+          name: stock.name,          // 종목명
+          order: stock.order || 0,   // 순서
+          enabled: stock.enabled     // 활성화 상태
+        };
         hasValidData = true;
       }
     });
     
     console.log('유효한 데이터:', Object.keys(validStockData));
     console.log('유효한 데이터 존재 여부:', hasValidData);
+    console.log('🎯 전송할 데이터 순서 확인:', Object.values(validStockData).map(s => `${s.order || 0}: ${s.name}(${s.code})`));
     
     // 유효한 데이터가 있을 때만 업데이트 알림 전송
     if (hasValidData) {
@@ -368,9 +375,16 @@ chrome.tabs.onActivated.addListener(async () => {
     const validStockData = {};
     let hasValidData = false;
     
-    activeStockCodes.forEach(code => {
-      if (stockData[code]) {
-        validStockData[code] = stockData[code];
+    // 활성화된 종목의 데이터만 추출 (설정 정보와 합쳐서)
+    currentStocks.forEach(stock => {
+      if (stock.enabled && stockData[stock.code]) {
+        // 크롤링 데이터와 설정 정보 합치기
+        validStockData[stock.code] = {
+          ...stockData[stock.code], // 크롤링한 가격 데이터
+          name: stock.name,          // 종목명
+          order: stock.order || 0,   // 순서
+          enabled: stock.enabled     // 활성화 상태
+        };
         hasValidData = true;
       }
     });

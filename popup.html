@@ -373,6 +373,122 @@
             opacity: 0.5;
         }
 
+        /* 최근 조회 영역 스타일 */
+        #recentStocksContainer {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+        }
+
+        #recentStocksContainer::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #recentStocksContainer::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }
+
+        #recentStocksContainer::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+        }
+
+        #recentStocksContainer::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .recent-stock-item:hover {
+            transform: scale(1.02);
+        }
+
+        .recent-stock-delete:hover {
+            background: rgba(255, 0, 0, 1) !important;
+            transform: scale(1.02);
+        }
+
+        /* 드래그 & 드롭 기능 스타일 */
+        .stock-item {
+            position: relative;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+        }
+
+        .stock-item.dragging {
+            opacity: 0.8;
+            transform: scale(1.02);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            background-color: rgba(100, 150, 255, 0.2) !important;
+            border: 2px dashed rgba(100, 150, 255, 0.5) !important;
+        }
+
+        /* 드래그 중인 항목 위/아래의 드롭 영역 표시 */
+        .stock-item:not(.dragging) {
+            border-top: 2px solid transparent;
+            border-bottom: 2px solid transparent;
+        }
+
+        .stock-item.drag-over-top {
+            border-top: 2px solid rgba(100, 150, 255, 0.8) !important;
+        }
+
+        .stock-item.drag-over-bottom {
+            border-bottom: 2px solid rgba(100, 150, 255, 0.8) !important;
+        }
+
+        .stock-item.drag-over-top,
+        .stock-item.drag-over-bottom {
+            background-color: rgba(100, 150, 255, 0.1) !important;
+        }
+
+        .drag-handle {
+            position: absolute;
+            left: -35px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 40px;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 16px;
+            font-weight: bold;
+            line-height: 1;
+            transition: all 0.2s ease;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .drag-handle:hover {
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-50%) scale(0.95);
+        }
+
+        .stock-item:hover .drag-handle {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .stock-item.dragging .drag-handle {
+            cursor: grabbing !important;
+            background: rgba(100, 150, 255, 0.3) !important;
+            border-color: rgba(100, 150, 255, 0.6) !important;
+        }
+
+        /* 주식 목록 전체에 여백 추가 (드래그 핸들 공간) */
+        #stockList {
+            padding-left: 30px;
+        }
+
         .status {
             position: absolute;
             bottom: -60px;
@@ -451,7 +567,7 @@
                     <div class="input-group">
                         <input type="text" id="stockName" placeholder="종목명 (예: 삼성전자)">
                     </div>
-                    <button class="btn" id="addStockBtn">추가</button>
+                    <button class="btn" id="addStockBtn" title="주식 추가">➕</button>
                 </div>
                 
                 <div id="stockList">

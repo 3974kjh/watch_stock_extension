@@ -12,6 +12,10 @@ let slideMode = 'auto'; // 'auto' 또는 'manual'
 
 // 로딩 상태 관리 변수들
 let isLoadingData = false;
+
+// Page Visibility API 관련 변수들
+let isPageVisible = true; // 초기값을 true로 설정
+let wasAutoSlideActive = false;
 let loadingStartTime = null;
 
 // 주가 표시 컨테이너 생성
@@ -863,6 +867,11 @@ function clearAllSlideIntervals() {
   }
   
   console.log('✅ 모든 타이머 정리 완료');
+  
+  // 👁️ 자동 슬라이드가 비활성화됨을 기록
+  if (autoSlideInterval) {
+    wasAutoSlideActive = false;
+  }
 }
 
 // 자동 슬라이드 관리 - 2개 이상 종목 시 무조건 실행 (중복 생성 방지)
@@ -871,7 +880,8 @@ async function manageAutoSlide(hasMultipleStocks) {
     hasMultipleStocks,
     stockDataArrayLength: stockDataArray.length,
     isInitializing: isAutoSlideInitializing,
-    currentInterval: autoSlideInterval ? 'EXISTS' : 'NULL'
+    currentInterval: autoSlideInterval ? 'EXISTS' : 'NULL',
+    isPageVisible: isPageVisible
   });
   
   // 🔒 중복 초기화 방지
@@ -884,6 +894,15 @@ async function manageAutoSlide(hasMultipleStocks) {
   if (slideMode === 'manual') {
     console.log('📱 수동 모드 - 자동 슬라이드 비활성화');
     clearAllSlideIntervals(); // 기존 타이머만 정리
+    return;
+  }
+  
+  // 👁️ 페이지가 보이지 않으면 자동 슬라이드 중지
+  if (!isPageVisible) {
+    console.log('👁️ 페이지가 숨겨진 상태 - 자동 슬라이드 중지');
+    clearAllSlideIntervals();
+    // 나중에 재개를 위해 상태 저장
+    wasAutoSlideActive = hasMultipleStocks && stockDataArray.length >= 2;
     return;
   }
   
@@ -917,9 +936,11 @@ async function manageAutoSlide(hasMultipleStocks) {
     
     // 🚀 새로운 타이머 생성
     autoSlideInterval = setInterval(() => {
-      if (isDisplayVisible && !isSliding) {
+      if (isDisplayVisible && !isSliding && isPageVisible) {
         console.log('⏭️ 자동 슬라이드 실행 (' + slideIntervalSeconds + '초 간격)');
         nextSlide();
+      } else if (!isPageVisible) {
+        console.log('👁️ 페이지 숨겨짐 - 자동 슬라이드 건너뛰기');
       }
     }, slideIntervalMs);
     
@@ -929,6 +950,9 @@ async function manageAutoSlide(hasMultipleStocks) {
       밀리초: slideIntervalMs + 'ms'
     });
     
+    // 👁️ 자동 슬라이드가 활성화됨을 기록
+    wasAutoSlideActive = true;
+    
   } catch (error) {
     console.error('❌ 자동 슬라이드 설정 실패, 기본값(5초) 사용:', error);
     
@@ -936,13 +960,17 @@ async function manageAutoSlide(hasMultipleStocks) {
     clearAllSlideIntervals();
     
     autoSlideInterval = setInterval(() => {
-      if (isDisplayVisible && !isSliding) {
+      if (isDisplayVisible && !isSliding && isPageVisible) {
         console.log('⏭️ 자동 슬라이드 실행 (기본 5초 간격)');
         nextSlide();
+      } else if (!isPageVisible) {
+        console.log('👁️ 페이지 숨겨짐 - 자동 슬라이드 건너뛰기');
       }
     }, 5000);
     
     currentSlideIntervalMs = 5000;
+    // 👁️ 자동 슬라이드가 활성화됨을 기록
+    wasAutoSlideActive = true;
     console.log('✅ 기본 자동 슬라이드 타이머 생성 완료 (5초)');
     
   } finally {
@@ -954,6 +982,12 @@ async function manageAutoSlide(hasMultipleStocks) {
 // 다음 슬라이드
 function nextSlide() {
   if (stockDataArray.length <= 1) return;
+  
+  // 👁️ 페이지가 보이지 않으면 슬라이드 실행 안함
+  if (!isPageVisible) {
+    console.log('👁️ 페이지가 숨겨진 상태 - nextSlide 건너뛰기');
+    return;
+  }
   
   isSliding = true;
   currentStockIndex = (currentStockIndex + 1) % stockDataArray.length;
@@ -998,6 +1032,12 @@ async function manualNextSlide() {
 // 이전 슬라이드
 function prevSlide() {
   if (stockDataArray.length <= 1) return;
+  
+  // 👁️ 페이지가 보이지 않으면 슬라이드 실행 안함
+  if (!isPageVisible) {
+    console.log('👁️ 페이지가 숨겨진 상태 - prevSlide 건너뛰기');
+    return;
+  }
   
   isSliding = true;
   currentStockIndex = currentStockIndex === 0 ? stockDataArray.length - 1 : currentStockIndex - 1;
@@ -1737,9 +1777,111 @@ function convertArrayToObject(stockArray) {
   return stockObject;
 }
 
+// Page Visibility API 이벤트 리스너 설정
+function setupPageVisibilityListener() {
+  // 🔍 초기 상태 정확히 설정
+  isPageVisible = !document.hidden;
+  
+  console.log('🚀 Page Visibility 리스너 초기화:', {
+    documentHidden: document.hidden,
+    isPageVisible: isPageVisible,
+    slideMode: slideMode,
+    stockCount: stockDataArray.length
+  });
+  
+  // 페이지 가시성 상태 변경 이벤트
+  document.addEventListener('visibilitychange', () => {
+    const previousVisibility = isPageVisible;
+    isPageVisible = !document.hidden;
+    
+    console.log('👁️ 페이지 가시성 변경:', {
+      from: previousVisibility ? 'visible' : 'hidden',
+      to: isPageVisible ? 'visible' : 'hidden',
+      slideMode: slideMode,
+      stockCount: stockDataArray.length
+    });
+    
+    if (isPageVisible && !previousVisibility) {
+      // 페이지가 다시 보이게 됨
+      console.log('👁️ 페이지가 다시 보이게 됨 - 자동 슬라이드 재개 확인');
+      
+      // 자동 모드이고 이전에 슬라이드가 활성화되어 있었다면 재시작
+      if (slideMode === 'auto' && wasAutoSlideActive && stockDataArray.length >= 2) {
+        console.log('🔄 자동 슬라이드 재시작');
+        setTimeout(() => {
+          manageAutoSlide(true).catch(console.error);
+        }, 1000); // 1초 후 재시작
+      }
+      
+    } else if (!isPageVisible && previousVisibility) {
+      // 페이지가 숨겨짐
+      console.log('👁️ 페이지가 숨겨짐 - 자동 슬라이드 중지');
+      
+      // 현재 자동 슬라이드가 활성화되어 있는지 확인
+      wasAutoSlideActive = (autoSlideInterval !== null);
+      
+      // 모든 슬라이드 타이머 정리
+      clearAllSlideIntervals();
+    }
+  });
+  
+  // 윈도우 포커스 이벤트 (추가적인 보장)
+  window.addEventListener('focus', () => {
+    // 🔍 포커스 시 현재 상태 다시 확인 및 업데이트
+    const currentlyVisible = !document.hidden;
+    if (currentlyVisible !== isPageVisible) {
+      console.log('🔍 윈도우 포커스에서 가시성 상태 불일치 감지 - 수정');
+      isPageVisible = currentlyVisible;
+    }
+    
+    if (isPageVisible && slideMode === 'auto' && stockDataArray.length >= 2) {
+      console.log('🔍 윈도우 포커스 - 자동 슬라이드 상태 확인:', {
+        isPageVisible: isPageVisible,
+        slideMode: slideMode,
+        stockCount: stockDataArray.length,
+        hasInterval: !!autoSlideInterval
+      });
+      setTimeout(() => {
+        if (!autoSlideInterval) {
+          console.log('🚀 윈도우 포커스에서 자동 슬라이드 시작');
+          manageAutoSlide(true).catch(console.error);
+        }
+      }, 500);
+    }
+  });
+  
+  window.addEventListener('blur', () => {
+    console.log('🔍 윈도우 블러 - 현재 상태 유지');
+  });
+  
+  // 🚀 첫 번째 창에서 초기화 보장을 위한 강화된 체크
+  console.log('🔍 첫 번째 창 초기화 상태 최종 확인:', {
+    documentReady: document.readyState,
+    isPageVisible: isPageVisible,
+    documentHidden: document.hidden,
+    slideMode: slideMode
+  });
+  
+  // DOM 완전 로드 후 추가 보장
+  if (document.readyState !== 'complete') {
+    window.addEventListener('load', () => {
+      console.log('📄 윈도우 로드 완료 - 첫 번째 창 자동 슬라이드 최종 확인');
+      setTimeout(() => {
+        if (isPageVisible && slideMode === 'auto' && stockDataArray.length >= 2 && !autoSlideInterval) {
+          console.log('🚀 윈도우 로드 후 자동 슬라이드 시작 (첫 번째 창)');
+          manageAutoSlide(true).catch(console.error);
+        }
+      }, 1000);
+    });
+  }
+}
+
 // 초기화 함수
 async function initializeStockDisplay() {
   createStockDisplay();
+  
+  // Page Visibility 리스너 설정
+  setupPageVisibilityListener();
   
   // 저장된 표시 상태 및 모드 복원
   try {
@@ -1777,12 +1919,33 @@ async function initializeStockDisplay() {
         .filter(s => s.enabled)
         .sort((a, b) => (a.order || 0) - (b.order || 0));
       
+      console.log('🎬 초기 자동 슬라이드 설정 확인:', {
+        isDisplayVisible: isDisplayVisible,
+        slideMode: slideMode,
+        isPageVisible: isPageVisible,
+        activeStocksLength: activeStocks.length
+      });
+      
       if (activeStocks.length > 1) {
+        
+        // 첫 번째 창에서도 올바르게 동작하도록 isPageVisible 조건 확인
+        console.log('✅ 첫 번째 창에서 자동 슬라이드 초기화 준비');
         
         // 데이터가 로드되면 자동 슬라이드가 시작되도록 준비
         setTimeout(() => {
-          if (stockDataArray.length > 1 && !autoSlideInterval && !isAutoSlideInitializing) {
+          console.log('🔍 자동 슬라이드 초기화 조건 재확인:', {
+            stockDataArrayLength: stockDataArray.length,
+            hasAutoSlideInterval: !!autoSlideInterval,
+            isAutoSlideInitializing: isAutoSlideInitializing,
+            isPageVisible: isPageVisible,
+            slideMode: slideMode
+          });
+          
+          if (stockDataArray.length > 1 && !autoSlideInterval && !isAutoSlideInitializing && isPageVisible && slideMode === 'auto') {
+            console.log('🚀 첫 번째 창에서 자동 슬라이드 실행');
             manageAutoSlide(true).catch(console.error);
+          } else {
+            console.log('❌ 자동 슬라이드 초기화 조건 미충족');
           }
         }, 2000); // 데이터 로딩 후 2초 뒤 재확인
       }
@@ -1811,6 +1974,24 @@ if (document.readyState === 'loading') {
 } else {
   initializeStockDisplay();
 }
+
+// 🚀 첫 번째 창에서 확실한 초기화를 위한 추가 체크
+setTimeout(() => {
+  console.log('🔍 첫 번째 창 최종 초기화 상태 점검:', {
+    isPageVisible: isPageVisible,
+    slideMode: slideMode,
+    stockDataArrayLength: stockDataArray.length,
+    hasAutoSlideInterval: !!autoSlideInterval,
+    isDisplayVisible: isDisplayVisible,
+    documentHidden: document.hidden
+  });
+  
+  // 모든 조건이 충족되었지만 자동 슬라이드가 시작되지 않은 경우
+  if (isPageVisible && slideMode === 'auto' && stockDataArray.length >= 2 && !autoSlideInterval && isDisplayVisible) {
+    console.log('🚀 첫 번째 창 최종 자동 슬라이드 강제 시작');
+    manageAutoSlide(true).catch(console.error);
+  }
+}, 5000); // 5초 후 최종 점검
 
 // 창 크기 변경 시 위치 조정
 window.addEventListener('resize', () => {
